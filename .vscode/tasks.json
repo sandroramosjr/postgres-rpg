@@ -1,0 +1,38 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "PostgreSQL: start",
+            "type": "shell",
+            "command": "docker compose up -d",
+            "problemMatcher": []
+        },
+        {
+            "label": "PostgreSQL: stop",
+            "type": "shell",
+            "command": "docker compose down",
+            "problemMatcher": []
+        },
+        {
+            "label": "PostgreSQL: status",
+            "type": "shell",
+            "command": "docker compose ps",
+            "problemMatcher": []
+        },
+        {
+            "label": "Tests: pytest",
+            "type": "shell",
+            "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe -m pytest -q",
+            "options": {
+                "env": {
+                    "PYTHONPATH": "${workspaceFolder}\\src"
+                }
+            },
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}

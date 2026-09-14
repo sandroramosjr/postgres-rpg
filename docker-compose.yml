@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: rpg
+      POSTGRES_PASSWORD: rpg
+      POSTGRES_DB: rpg
+    ports:
+      - "5432:5432"
+    volumes:
+      - rpg_pgdata:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./sql/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+
+volumes:
+  rpg_pgdata:
