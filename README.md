@@ -13,13 +13,16 @@ RPG de texto por turnos, desenvolvido em Python com persistência em PostgreSQL.
 - Histórico das últimas 20 batalhas para cada vitória, derrota ou fuga
 - Descanso na estalagem por 50 ouro
 - Compra e venda de itens; itens não equipados são vendidos por metade do preço
-- Estatísticas no jogo obtidas das visões SQL (`character_battle_stats`, `enemy_threat_stats`, `quest_completion_stats`)
+- Venda automática de loot duplicado, com registro e estatísticas de vendas
+- Habilidades do Mago balanceadas para causar dano relevante com custo de MP reduzido
+- Pausas entre cenas para facilitar a leitura durante o jogo
+- Estatísticas no jogo obtidas das visões SQL e do histórico de vendas
 
 ## Estrutura
 
 ```
 src/rpg/models/        Domínio orientado a objetos (LivingEntity, Character, Enemy, Inventory, ...)
-src/rpg/repositories/  SQL direto via psycopg
+src/rpg/repositories/  SQL direto via psycopg, incluindo vendas e estatísticas
 src/rpg/combat.py      Resolução dos turnos
 src/rpg/cli.py         Interface de texto
 sql/schema.sql         Tabelas, índices e visões
@@ -78,7 +81,7 @@ A primeira conexão aplica `sql/schema.sql` e `sql/seed.sql` se a tabela `charac
 Com o PostgreSQL iniciado, crie os três saves prontos para testes com:
 
 ```powershell
-Get-Content .\sql\debug_saves.sql | docker exec -i postgres-rpg-db-1 psql -U rpg -d rpg
+Get-Content .\sql\debug_saves.sql | docker compose exec -T db psql -U rpg -d rpg
 ```
 
 O script cria `WAR`, `ROG` e `MAG` no nível 10, com 9999 ouro, todos os equipamentos

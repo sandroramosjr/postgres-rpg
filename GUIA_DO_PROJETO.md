@@ -62,7 +62,10 @@ O CLI não deveria conter as regras profundas do domínio. Ele recebe a entrada 
 
 ### `game.py`
 
-Contém `GameService`, a camada de aplicação que coordena uma ação completa do jogo. Ele reúne os repositórios e o motor de combate em um único serviço.
+Contém `GameService`, a camada de aplicação que coordena uma ação completa do jogo. Ele
+recebe os repositórios e o motor de combate por injeção de dependência. A função
+`create_game_service()` faz a composição das implementações no ponto de entrada, deixando
+o serviço modular e testável.
 
 Exemplos de responsabilidades:
 
@@ -201,6 +204,7 @@ Executa consultas de leitura para a tela de estatísticas:
 - desempenho contra inimigos;
 - progresso das missões;
 - valor do inventário.
+- quantidade e valor das vendas, incluindo vendas automáticas de loot duplicado.
 
 A taxa de vitória contra inimigos é calculada considerando vitórias e derrotas. Fugas não entram nessa porcentagem.
 
@@ -256,7 +260,7 @@ equipado e todas as habilidades disponíveis da classe. O script pode ser reapli
 pois substitui saves existentes com esses nomes:
 
 ```powershell
-Get-Content .\sql\debug_saves.sql | docker exec -i postgres-rpg-db-1 psql -U rpg -d rpg
+Get-Content .\sql\debug_saves.sql | docker compose exec -T db psql -U rpg -d rpg
 ```
 
 ## 7. Docker e PostgreSQL
@@ -360,7 +364,9 @@ cli.main() abre uma conexão
     ↓
 db.initialize_schema() verifica o banco
     ↓
-GameService reúne modelos, combate e repositórios
+create_game_service() compõe repositórios e motor de combate
+    ↓
+GameService coordena a operação
     ↓
 cli.py mostra o menu ao jogador
 ```
