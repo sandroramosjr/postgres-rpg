@@ -12,15 +12,25 @@ from rpg.repositories.sale_repository import SaleRepository
 
 
 class GameService:
-    def __init__(self, conn) -> None:
+    def __init__(
+        self,
+        conn,
+        characters: CharacterRepository,
+        catalog: CatalogRepository,
+        quests: QuestRepository,
+        battles: BattleRepository,
+        stats: StatsRepository,
+        sales: SaleRepository,
+        combat: CombatEngine,
+    ) -> None:
         self.conn = conn
-        self.characters = CharacterRepository(conn)
-        self.catalog = CatalogRepository(conn)
-        self.quests = QuestRepository(conn)
-        self.battles = BattleRepository(conn)
-        self.stats = StatsRepository(conn)
-        self.sales = SaleRepository(conn)
-        self.combat = CombatEngine()
+        self.characters = characters
+        self.catalog = catalog
+        self.quests = quests
+        self.battles = battles
+        self.stats = stats
+        self.sales = sales
+        self.combat = combat
 
     def save(self, character: Character) -> None:
         self.characters.save(character)
@@ -73,48 +83,76 @@ class GameService:
         *,
         loot_roll: bool,
     ) -> list[str]:
-        notes: list[str] = []
-        exp_gained = 0
-        gold_gained = 0
-        if log.outcome == "win":
-            exp_gained = enemy.exp_reward
-            gold_gained = enemy.gold_reward
-            levels = character.gain_exp(exp_gained)
-            character.add_gold(gold_gained)
-            notes.append(f"Vitória! +{exp_gained} EXP, +{gold_gained} de ouro.")
-            for level in levels:
-                notes.append(f"Você subiu para o nível {level}! +25 de ouro, atributos aumentados.")
-            if loot_roll and enemy.loot is not None:
-                loot = enemy.loot
-                if character.inventory.quantity(loot.id) > 0:
-                    sale_value = max(1, loot.price // 2)
-                    character.add_gold(sale_value)
-                    self.sales.record(
-                        character_id=character.id,
-                        equipment_id=loot.id,
-                        quantity=1,
-                        unit_price=sale_value,
-                    )
-                    notes.append(
-                        f"{enemy.name} deixou cair {loot.name}, mas você já tinha uma cópia. "
-                        f"Item vendido automaticamente por {sale_value} de ouro."
-                    )
-                else:
-                    character.inventory.add(loot)
-                    notes.append(f"{enemy.name} deixou cair {loot.name}!")
-            completed = character.record_enemy_kill(enemy.id)
-            for progress in completed:
-                notes.append(
-                    f"Missão concluída: {progress.quest.name} "
-                    f"(+{progress.quest.exp_reward} EXP, +{progress.quest.gold_reward} de ouro)."
-                )
-            self.characters._sync_class_skills(character)
-        elif log.outcome == "loss":
-            character.stats.hp = max(1, character.stats.max_hp // 4)
-            notes.append("Você foi derrotado e voltou cambaleando para a cidade.")
-        else:
-            notes.append("Você fugiu da batalha.")
+        notes, exp_gained, gold_gained = self._resolve_outcome(
+            character, enemy, log.outcome, loot_roll
+        )
+        self._record_battle(character, enemy, log, exp_gained, gold_gained)
+        self.save(character)
+        return notes
 
+    def _resolve_outcome(
+        self, character: Character, enemy: Enemy, outcome: str, loot_roll: bool
+    ) -> tuple[list[str], int, int]:
+        if outcome == "win":
+            return self._resolve_victory(character, enemy, loot_roll)
+        if outcome == "loss":
+            character.stats.hp = max(1, character.stats.max_hp // 4)
+            return ["Você foi derrotado e voltou cambaleando para a cidade."], 0, 0
+        return ["Você fugiu da batalha."], 0, 0
+
+    def _resolve_victory(
+        self, character: Character, enemy: Enemy, loot_roll: bool
+    ) -> tuple[list[str], int, int]:
+        exp_gained = enemy.exp_reward
+        gold_gained = enemy.gold_reward
+        levels = character.gain_exp(exp_gained)
+        character.add_gold(gold_gained)
+        notes = [f"Vitória! +{exp_gained} EXP, +{gold_gained} de ouro."]
+        notes.extend(
+            f"Você subiu para o nível {level}! +25 de ouro, atributos aumentados."
+            for level in levels
+        )
+        notes.extend(self._resolve_loot(character, enemy, loot_roll))
+        notes.extend(self._complete_quests(character, enemy))
+        self.characters._sync_class_skills(character)
+        return notes, exp_gained, gold_gained
+
+    def _resolve_loot(self, character: Character, enemy: Enemy, loot_roll: bool) -> list[str]:
+        if not loot_roll or enemy.loot is None:
+            return []
+        loot = enemy.loot
+        if character.inventory.quantity(loot.id) == 0:
+            character.inventory.add(loot)
+            return [f"{enemy.name} deixou cair {loot.name}!"]
+        sale_value = max(1, loot.price // 2)
+        character.add_gold(sale_value)
+        self.sales.record(
+            character_id=character.id,
+            equipment_id=loot.id,
+            quantity=1,
+            unit_price=sale_value,
+        )
+        return [
+            f"{enemy.name} deixou cair {loot.name}, mas você já tinha uma cópia. "
+            f"Item vendido automaticamente por {sale_value} de ouro."
+        ]
+
+    def _complete_quests(self, character: Character, enemy: Enemy) -> list[str]:
+        completed = character.record_enemy_kill(enemy.id)
+        return [
+            f"Missão concluída: {progress.quest.name} "
+            f"(+{progress.quest.exp_reward} EXP, +{progress.quest.gold_reward} de ouro)."
+            for progress in completed
+        ]
+
+    def _record_battle(
+        self,
+        character: Character,
+        enemy: Enemy,
+        log: BattleLog,
+        exp_gained: int,
+        gold_gained: int,
+    ) -> None:
         self.battles.record(
             character_id=character.id,
             enemy_id=enemy.id,
@@ -125,5 +163,16 @@ class GameService:
             exp_gained=exp_gained,
             gold_gained=gold_gained,
         )
-        self.save(character)
-        return notes
+
+
+def create_game_service(conn) -> GameService:
+    return GameService(
+        conn,
+        characters=CharacterRepository(conn),
+        catalog=CatalogRepository(conn),
+        quests=QuestRepository(conn),
+        battles=BattleRepository(conn),
+        stats=StatsRepository(conn),
+        sales=SaleRepository(conn),
+        combat=CombatEngine(),
+    )

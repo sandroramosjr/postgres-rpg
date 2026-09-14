@@ -7,7 +7,7 @@ import psycopg
 
 from rpg.combat import BattleLog
 from rpg.db import get_connection, initialize_schema
-from rpg.game import GameService
+from rpg.game import GameService, create_game_service
 from rpg.models.character import Character
 from rpg.models.enemy import Enemy
 from rpg.models.skill import Skill
@@ -312,7 +312,46 @@ def _choose_skill(character: Character) -> Skill | None:
     return character.skills[labels.index(picked)]
 
 
-def _fight(game: GameService, character: Character) -> None:
+def _show_turn(character: Character, enemy: Enemy, turn: int) -> None:
+    stats = character.effective_stats()
+    print(
+        f"\n-- Turno {turn} --  "
+        f"Você {stats.hp}/{stats.max_hp} HP  "
+        f"{stats.mp}/{stats.max_mp} MP  |  "
+        f"{enemy.name} {enemy.stats.hp}/{enemy.stats.max_hp} HP"
+    )
+
+
+def _enemy_turn(game: GameService, character: Character, enemy: Enemy, log: BattleLog) -> bool:
+    taken, line = game.combat.enemy_attack(enemy, character)
+    log.damage_taken += taken
+    print(line)
+    return character.is_alive
+
+
+def _player_action(
+    game: GameService, character: Character, enemy: Enemy, log: BattleLog
+) -> tuple[str | None, int, bool]:
+    action = _prompt("[A]tacar  [H]abilidade  [F]ugir: ").lower()
+    if action == "f":
+        log.lines.append("Você fugiu.")
+        return "flee", 0, True
+    if action == "h":
+        skill = _choose_skill(character)
+        if skill is None:
+            return None, 0, False
+        damage, line = game.combat.player_skill_attack(character, enemy, skill)
+        print(line)
+        return (None, damage, False) if damage == 0 else (None, damage, True)
+    if action == "a":
+        damage, line = game.combat.player_basic_attack(character, enemy)
+        print(line)
+        return None, damage, True
+    print("Escolha A, H ou F.")
+    return None, 0, False
+
+
+def _select_enemy(game: GameService) -> Enemy | None:
     enemies = game.catalog.list_enemies()
     labels = [
         f"{enemy.name} (nível {enemy.level}, HP {enemy.stats.max_hp}, "
@@ -320,74 +359,46 @@ def _fight(game: GameService, character: Character) -> None:
         for enemy in enemies
     ]
     picked = _pick(labels, "inimigo")
-    if picked is None:
+    return enemies[labels.index(picked)].clone() if picked is not None else None
+
+
+def _finish_fight(game: GameService, character: Character, enemy: Enemy, log: BattleLog) -> None:
+    loot_roll = log.outcome == "win" and game.combat.rng.random() < 0.45
+    for note in game.resolve_battle(character, enemy, log, loot_roll=loot_roll):
+        print(note)
+    _pause()
+
+
+def _fight(game: GameService, character: Character) -> None:
+    enemy = _select_enemy(game)
+    if enemy is None:
         return
-    enemy = enemies[labels.index(picked)].clone()
     log = BattleLog(outcome="flee", turns=0, damage_dealt=0, damage_taken=0, lines=[])
     print(f"\nUm {enemy.name} apareceu!")
 
     while character.is_alive and enemy.is_alive:
         log.turns += 1
-        character_stats = character.effective_stats()
-        print(
-            f"\n-- Turno {log.turns} --  "
-            f"Você {character_stats.hp}/{character_stats.max_hp} HP  "
-            f"{character_stats.mp}/{character_stats.max_mp} MP  |  "
-            f"{enemy.name} {enemy.stats.hp}/{enemy.stats.max_hp} HP"
-        )
+        _show_turn(character, enemy, log.turns)
         player_first = game.combat.player_goes_first(character, enemy)
-        if not player_first:
-            taken, enemy_line = game.combat.enemy_attack(enemy, character)
-            log.damage_taken += taken
-            print(enemy_line)
-            if not character.is_alive:
-                log.outcome = "loss"
-                break
-        action = _prompt("[A]tacar  [H]abilidade  [F]ugir: ").lower()
-        player_line = None
-        dmg = 0
-        if action == "f":
-            log.outcome = "flee"
-            log.lines.append("Você fugiu.")
+        if not player_first and not _enemy_turn(game, character, enemy, log):
+            log.outcome = "loss"
             break
-        if action == "h":
-            skill = _choose_skill(character)
-            if skill is None:
-                log.turns -= 1
-                continue
-            dmg, player_line = game.combat.player_skill_attack(character, enemy, skill)
-            if dmg == 0 and "MP suficiente" in player_line:
-                print(player_line)
-                log.turns -= 1
-                continue
-        elif action == "a":
-            dmg, player_line = game.combat.player_basic_attack(character, enemy)
-        else:
-            print("Escolha A, H ou F.")
+        outcome, damage, valid = _player_action(game, character, enemy, log)
+        if not valid:
             log.turns -= 1
             continue
-        log.damage_dealt += dmg
-        print(player_line)
+        if outcome == "flee":
+            log.outcome = outcome
+            break
+        log.damage_dealt += damage
         if not enemy.is_alive:
             log.outcome = "win"
             break
-        if player_first:
-            taken, enemy_line = game.combat.enemy_attack(enemy, character)
-            log.damage_taken += taken
-            print(enemy_line)
-            if not character.is_alive:
-                log.outcome = "loss"
-                break
-    else:
-        if character.is_alive and not enemy.is_alive:
-            log.outcome = "win"
-        elif not character.is_alive:
+        if player_first and not _enemy_turn(game, character, enemy, log):
             log.outcome = "loss"
+            break
 
-    loot_roll = log.outcome == "win" and game.combat.rng.random() < 0.45
-    for note in game.resolve_battle(character, enemy, log, loot_roll=loot_roll):
-        print(note)
-    _pause()
+    _finish_fight(game, character, enemy, log)
 
 
 def _town_loop(game: GameService, character: Character) -> None:
@@ -488,7 +499,7 @@ def main() -> int:
     try:
         with get_connection() as conn:
             initialize_schema(conn)
-            game = GameService(conn)
+            game = create_game_service(conn)
             while True:
                 options = [
                     "Criar personagem",

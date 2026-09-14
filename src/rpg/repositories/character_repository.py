@@ -139,6 +139,13 @@ class CharacterRepository:
         if character.id is None:
             raise ValueError("Cannot save a character without an id")
         character.stats.clamp_vitals()
+        self._save_stats(character)
+        self._save_inventory(character)
+        self._save_equipped(character)
+        self._save_skills(character)
+        self._save_quests(character)
+
+    def _save_stats(self, character: Character) -> None:
         self.conn.execute(
             """
             UPDATE characters SET
@@ -162,6 +169,8 @@ class CharacterRepository:
                 character.id,
             ),
         )
+
+    def _save_inventory(self, character: Character) -> None:
         self.conn.execute("DELETE FROM inventory WHERE character_id = %s", (character.id,))
         for item, quantity in character.inventory.all_items():
             self.conn.execute(
@@ -171,6 +180,8 @@ class CharacterRepository:
                 """,
                 (character.id, item.id, quantity),
             )
+
+    def _save_equipped(self, character: Character) -> None:
         self.conn.execute("DELETE FROM equipped_items WHERE character_id = %s", (character.id,))
         for slot, item in character.equipped.items():
             self.conn.execute(
@@ -180,6 +191,8 @@ class CharacterRepository:
                 """,
                 (character.id, slot, item.id),
             )
+
+    def _save_skills(self, character: Character) -> None:
         self.conn.execute("DELETE FROM character_skills WHERE character_id = %s", (character.id,))
         for skill in character.skills:
             self.conn.execute(
@@ -189,6 +202,8 @@ class CharacterRepository:
                 """,
                 (character.id, skill.id),
             )
+
+    def _save_quests(self, character: Character) -> None:
         for progress in character.quests:
             if progress.record_id is None:
                 row = self.conn.execute(
