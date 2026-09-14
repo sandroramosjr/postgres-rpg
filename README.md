@@ -32,6 +32,34 @@ sql/stats.sql          Exemplos de consultas analíticas
 
 ## Configuração
 
+### Requisitos
+
+Para executar o projeto pelo código-fonte, é necessário:
+
+- Windows, macOS ou Linux;
+- Python 3.11 ou superior;
+- Docker Desktop ou Docker Engine com Docker Compose;
+- porta `5432` disponível para o PostgreSQL;
+- aproximadamente 1 GB de espaço livre para a imagem e os dados do banco.
+
+Para executar apenas o `postgres-rpg.exe` no Windows, Python não é necessário,
+mas o Docker continua sendo necessário para fornecer o PostgreSQL local. O
+computador que executa o `.exe` precisa ter o Docker iniciado e o banco
+disponível em `localhost:5432`. O banco do computador do desenvolvedor não é
+compartilhado com outros usuários.
+
+O arquivo `docker-compose.yml` configura automaticamente um PostgreSQL 16 com
+estas credenciais locais:
+
+- Banco: `rpg`
+- Usuário: `rpg`
+- Senha: `rpg`
+- Endereço: `localhost:5432`
+
+Se a porta `5432` já estiver ocupada, altere a publicação da porta no
+`docker-compose.yml` e defina uma `DATABASE_URL` correspondente no arquivo
+`.env`.
+
 1. Inicie o PostgreSQL (Docker):
 
    ```bash
