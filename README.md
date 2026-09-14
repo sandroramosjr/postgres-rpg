@@ -25,6 +25,7 @@ sql/schema.sql         Tabelas, índices e visões
 sql/seed.sql           Classes, equipamentos, inimigos e missões
 sql/stats.sql          Exemplos de consultas analíticas
 ```
+
 ## Configuração
 
 ### Requisitos
@@ -98,3 +99,39 @@ Se a porta `5432` já estiver ocupada, altere a publicação da porta no
    as tarefas `PostgreSQL: start` e `Tests: pytest` na Paleta de Comandos.
 
 A primeira conexão aplica `sql/schema.sql` e `sql/seed.sql` se a tabela `characters` não existir.
+
+### Saves de debug
+
+Com o PostgreSQL iniciado, crie os três saves prontos para testes com:
+
+```powershell
+Get-Content .\sql\debug_saves.sql | docker compose exec -T db psql -U rpg -d rpg
+```
+
+O script cria `WAR`, `ROG` e `MAG` no nível 10, com 9999 ouro, todos os equipamentos
+no inventário, um conjunto equipado e todas as habilidades disponíveis da classe.
+
+## Executável Windows
+
+Para gerar a versão 1.0 em um único executável, com o ambiente virtual criado:
+
+```powershell
+.\build_exe.ps1
+```
+
+O arquivo será criado em `dist\postgres-rpg.exe`. O executável inclui o jogo, suas
+dependências e os scripts SQL, mas o PostgreSQL continua sendo externo e deve estar
+disponível no computador que executar o jogo.
+
+## Testes
+
+```bash
+set PYTHONPATH=src
+pytest
+```
+
+Os testes de domínio não precisam do PostgreSQL.
+
+## URL do banco de dados
+
+Padrão: `postgresql://rpg:rpg@localhost:5432/rpg` (consulte `.env.example`).
